@@ -1,0 +1,5 @@
+boto3
+filelock
+jsonschema[format]
+yt-dlp[default]
+tzdata

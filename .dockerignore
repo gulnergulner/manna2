@@ -1,0 +1,10 @@
+.git
+node_modules
+**/node_modules
+**/.next
+.venv
+**/.env*
+data
+state
+logs
+**/__pycache__

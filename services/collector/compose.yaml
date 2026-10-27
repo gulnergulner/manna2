@@ -1,0 +1,20 @@
+services:
+  collector:
+    image: manna-collector:0.1.0
+    build:
+      context: ../..
+      dockerfile: services/collector/Dockerfile
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      STATE_DIR: /state
+      LOG_DIR: /logs
+      TZ: Asia/Seoul
+    volumes:
+      - ../../data:/data
+      - ../../state:/state
+      - ../../logs:/logs
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    restart: "no"
