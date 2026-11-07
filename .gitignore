@@ -12,3 +12,8 @@ logs/
 *.tsbuildinfo
 .vercel/
 test-results/
+
+.env.nas
+library/
+
+.env.tunnel

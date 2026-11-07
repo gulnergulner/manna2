@@ -1,0 +1,40 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    env_file: .env.nas
+    environment:
+      STORAGE_MODE: nas
+      NAS_LIBRARY_DIR: /library
+      MOCK_MODE: 'false'
+    ports:
+      - '127.0.0.1:3100:3000'
+    volumes:
+      - ./library:/library:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    restart: unless-stopped
+  collector:
+    build:
+      context: .
+      dockerfile: services/collector/Dockerfile
+    env_file: .env.nas
+    environment:
+      STORAGE_MODE: nas
+      NAS_LIBRARY_DIR: /library
+      DATA_DIR: /data
+      STATE_DIR: /state
+      LOG_DIR: /logs
+      TZ: Asia/Seoul
+    volumes:
+      - ./library:/library
+      - ./data:/data
+      - ./state:/state
+      - ./logs:/logs
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    profiles: ['collector']
+    restart: 'no'

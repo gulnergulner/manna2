@@ -37,3 +37,19 @@ cd /volume1/docker/church-audio || exit 1
 볼륨에는 세 디렉터리만 연결합니다. privileged, Docker socket, NAS 루트 마운트는 사용하지 않습니다. compose는 일회성 실행이고 상시 서비스/HTTP 포트를 열지 않습니다. 로그는 호스트 리다이렉션으로 `logs/collector.log`에 저장하며 DSM에서 회전/보관을 설정합니다.
 
 이미지 빌드에서 Python/Deno 버전 태그와 Python 해시 lock을 사용합니다. FFmpeg와 OS 보안 패치는 apt 저장소 상태에 따라 달라집니다. 완전한 byte 단위 이미지 재현이 필요하면 검증한 이미지 digest를 기록하고 사설 레지스트리에서 운영합니다. Docker 엔진 미실행 상태에서 개발했으므로 실제 NAS 이미지 빌드는 인수 테스트 대상입니다.
+
+## 선택 사항: hoho_ytdl_bot의 MP3 재사용
+
+두 서비스는 독립적입니다. 만나 수집기가 교회 채널과 날짜 조건에 맞는 방송을 발견했을 때, 봇이 **이미** 같은 영상 ID로 만든 MP3가 있으면 읽기 전용으로 복사해 사용할 수 있습니다. 봇에 다운로드를 요청하거나 텔레그램 메시지를 보내지는 않습니다. 일치하는 파일이 없거나 검증에 실패하면 만나 수집기가 직접 다운로드합니다. 봇 파일은 신뢰할 수 있는 개인 봇 출력이어야 합니다. 영상 ID가 파일의 실제 출처를 암호학적으로 증명하지는 않습니다.
+
+재사용 조건은 영상 ID와 파일명 일치, 유일한 후보, 영상 길이 메타데이터 존재 및 ffprobe MP3 검증·재생시간 일치, `AUDIO_BITRATE=192K`입니다. 봇의 기본 192K 출력에만 맞춘 설정이며 실제 비트레이트를 별도로 측정하지 않습니다. 수집된 MP3는 기존 R2 업로드·목록 게시와 동일한 검증을 거칩니다. 봇 경로의 파일을 삭제하거나 변경하지 않습니다.
+
+NAS에서 실제 봇의 다운로드 경로와 UID 10001의 읽기 권한을 확인한 후, 일회성 실행과 DSM 예약 작업 **모두** 다음과 같이 설정합니다. 경로는 예시이며 봇의 실제 볼륨 마운트와 일치해야 합니다.
+
+```sh
+cd /volume1/docker/church-audio
+export BOT_AUDIO_HOST_DIR=/volume4/docker/hoho_ytdl_bot/data/telegram
+/usr/local/bin/docker compose -f services/collector/compose.yaml -f services/collector/compose.bot-cache.yaml run --rm collector --dry-run
+```
+
+실제 다운로드·업로드에는 `--dry-run`을 제거합니다. Compose 명령의 `-f` 옵션을 모든 예약·재시도 작업에 동일하게 넣고, DSM 작업 스크립트에도 `BOT_AUDIO_HOST_DIR`을 설정하세요. 봇 출력 경로를 접근할 수 없거나 NAS에 이 저장소의 봇 캐시 설정을 아직 배포하지 않았다면 이 옵션 없이 기존 수집기를 사용합니다. NAS에서의 두 서비스 연동은 아직 검증하지 않았습니다.

@@ -45,6 +45,7 @@ export async function authenticated() {
 export function sameOrigin(request: Request) {
   const origin = request.headers.get("origin");
   if (!origin) return false;
+  if (process.env.PUBLIC_ORIGIN) return origin === process.env.PUBLIC_ORIGIN;
   const url = new URL(request.url);
   const host = request.headers.get("host") || url.host;
   const protocol = process.env.VERCEL ? "https:" : url.protocol;

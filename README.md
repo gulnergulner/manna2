@@ -1,6 +1,8 @@
 # 만나 — 새벽예배 음성 보관함
 
-새가나안교회 새벽 방송을 NAS에서 MP3로 준비하고 비공개 R2에서 직접 청취하는 MVP입니다. 웹은 **Vercel / Next.js**, 수집기는 **Synology / Python + yt-dlp + FFmpeg + Deno**입니다. 음원은 설교 구간이 아닌 전체 예배입니다.
+새가나안교회 새벽 방송을 NAS에서 MP3를 준비하고 NAS에 실행하는 웹에서 청취하는 MVP입니다. 웹은 **Synology / Next.js**, 수집기는 **Synology / Python + yt-dlp + FFmpeg + Deno**입니다. 기존 R2/Vercel 모드도 코드에 남아 있습니다. 음원은 설교 구간이 아닌 전체 예배입니다.
+
+NAS 운영은 [NAS 서비스 실행 안내](docs/nas-service.md)를 참고하세요. 새 NAS 구성은 실환경 검증 전입니다.
 
 ## 로컬 웹 실행
 
@@ -48,6 +50,10 @@ node scripts/smoke-web.mjs --browser
 ```
 
 HTTP smoke는 별도 포트 3198에서 샘플 개발 서버를 시작한 뒤 종료합니다. 실제 운영 모드의 R2 연동은 별도 확인이 필요합니다.
+
+## 개인 텔레그램 MP3 봇
+
+개인용 텔레그램 봇은 별도의 [hoho_ytdl_bot 저장소](https://github.com/gulnergulner/hoho_ytdl_bot)에서 관리합니다. 만나 수집기가 교회 방송으로 선택한 영상에 한해 봇이 이미 변환한 MP3를 선택적으로 재사용할 수 있습니다. 봇에 작업을 요청하는 연동은 아직 없으며 설정 방법은 [Synology 안내](docs/synology-setup.md#선택-사항-hoho_ytdl_bot의-mp3-재사용)를 참고하세요.
 
 ## 구현 상태
 

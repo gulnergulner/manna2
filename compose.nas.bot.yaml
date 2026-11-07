@@ -1,0 +1,9 @@
+services:
+  collector:
+    environment:
+      BOT_AUDIO_DIR: /bot-audio
+    volumes:
+      - type: bind
+        source: ${BOT_AUDIO_HOST_DIR:?Set BOT_AUDIO_HOST_DIR to the NAS bot output folder}
+        target: /bot-audio
+        read_only: true

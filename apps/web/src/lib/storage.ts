@@ -1,5 +1,7 @@
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import fixture from "../../../../fixtures/catalog.json";
 import { parseCatalog, type Catalog, type Sermon } from "./catalog";
 export function mockMode() {
@@ -42,6 +44,10 @@ export function boundedInt(
   return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
 }
 export async function readJson(key: string): Promise<unknown> {
+  if (process.env.STORAGE_MODE === "nas") {
+    if (!process.env.NAS_LIBRARY_DIR || !["metadata/catalog.json", "metadata/collector-status.json"].includes(key)) throw new Error("Invalid local storage configuration");
+    return JSON.parse(await readFile(path.join(process.env.NAS_LIBRARY_DIR, key), "utf8"));
+  }
   const { client, bucket } = config();
   const r = await client.send(
     new GetObjectCommand({ Bucket: bucket, Key: key }),
@@ -74,6 +80,7 @@ export async function audioUrl(item: Sermon, download = false) {
       url: `/api/mock-audio?id=${encodeURIComponent(item.id)}${download ? "&download=1" : ""}`,
       expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
     };
+  if (process.env.STORAGE_MODE === "nas") return { url: `/api/audio/${encodeURIComponent(item.id)}${download ? "?download=1" : ""}`, expiresAt: new Date(Date.now() + ttl * 1000).toISOString() };
   const { client, bucket } = config();
   const url = await getSignedUrl(
     client,

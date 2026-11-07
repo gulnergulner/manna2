@@ -119,4 +119,41 @@ class RecoveryTest(unittest.TestCase):
             with self.assertRaises(Timeout):
                 with single_run(self.root / 'lock'): pass
 
+class BotCacheTest(unittest.TestCase):
+    def test_matching_output_is_copied_and_duration_is_checked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = root / 'cache'
+            cache.mkdir()
+            source = cache / '예배 [abcdefghijk].mp3'
+            source.write_bytes(b'audio')
+            data = root / 'data'
+            data.mkdir()
+            collector = Collector(None, None, data, prober=lambda p: (120, p.stat().st_size))
+            with patch.dict('os.environ', {'BOT_AUDIO_DIR': str(cache), 'AUDIO_BITRATE': '192K'}):
+                dest = data / 'abcdefghijk.mp3'
+                self.assertTrue(collector.reuse_bot_audio({'id': 'abcdefghijk', 'duration': 120}, dest))
+                self.assertEqual(dest.read_bytes(), b'audio')
+                dest.unlink()
+                self.assertFalse(collector.reuse_bot_audio({'id': 'abcdefghijk', 'duration': 300}, dest))
+                self.assertFalse(dest.exists())
+                self.assertFalse(collector.reuse_bot_audio({'id': 'abcdefghijk'}, dest))
+                self.assertTrue(source.exists())
+
+    def test_ambiguous_files_and_symlinks_are_not_reused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = root / 'cache'
+            cache.mkdir()
+            (cache / 'abcdefghijk.mp3').write_bytes(b'audio')
+            (cache / '제목 [abcdefghijk].mp3').write_bytes(b'audio')
+            collector = Collector(None, None, root / 'data', prober=lambda p: (120, p.stat().st_size))
+            with patch.dict('os.environ', {'BOT_AUDIO_DIR': str(cache), 'AUDIO_BITRATE': '192K'}):
+                self.assertFalse(collector.reuse_bot_audio({'id': 'abcdefghijk', 'duration': 120}, root / 'data/out.mp3'))
+                (cache / '제목 [abcdefghijk].mp3').unlink()
+                (cache / 'abcdefghijk.mp3').unlink()
+                (cache / 'abcdefghijk.mp3').symlink_to(root / 'data/outside.mp3')
+                self.assertFalse(collector.reuse_bot_audio({'id': 'abcdefghijk', 'duration': 120}, root / 'data/out.mp3'))
+
+
 if __name__ == '__main__': unittest.main()

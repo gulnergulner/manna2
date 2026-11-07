@@ -12,6 +12,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from zoneinfo import ZoneInfo
 
 from filelock import FileLock, Timeout
@@ -137,7 +138,12 @@ class LocalStore:
     def upload(self, path, key, checksum):
         p = self.root / key
         p.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(path, p)
+        tmp = p.with_suffix('.uploading')
+        try:
+            shutil.copyfile(path, tmp)
+            tmp.replace(p)
+        finally:
+            tmp.unlink(missing_ok=True)
 
 class R2Store:
     def __init__(self):
@@ -199,7 +205,45 @@ class Collector:
         self.prober = prober
         data.mkdir(parents=True, exist_ok=True)
 
+    def reuse_bot_audio(self, info, final):
+        """Copy an explicitly configured bot output; validate before publication."""
+        directory = os.getenv('BOT_AUDIO_DIR', '')
+        duration = info.get('duration')
+        if (not directory or os.getenv('AUDIO_BITRATE', '192K').upper() != '192K'
+                or not isinstance(duration, (int, float)) or isinstance(duration, bool) or duration <= 0):
+            return False
+        directory = Path(directory)
+        if not directory.is_dir():
+            return False
+        video = info['id']
+        try:
+            candidates = [p for p in directory.iterdir()
+                          if (p.name == f'{video}.mp3' or p.name.endswith(f' [{video}].mp3'))
+                          and not p.is_symlink() and p.is_file()]
+        except OSError:
+            return False
+        if len(candidates) != 1:
+            return False
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=self.data, prefix='.bot-audio-', suffix='.mp3', delete=False) as target:
+                temporary = Path(target.name)
+                with candidates[0].open('rb') as source:
+                    shutil.copyfileobj(source, target)
+            actual, _ = self.prober(temporary)
+            if abs(actual - duration) > max(10, duration * .02):
+                return False
+            temporary.replace(final)
+            return True
+        except (OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError):
+            return False
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
     def download(self, info, final):
+        if self.reuse_bot_audio(info, final):
+            return
         # yt-dlp chooses an audio-only track, then FFmpeg converts it. Fragment loss is fatal.
         work = self.data / 'tmp' / info['id']
         work.mkdir(parents=True, exist_ok=True)
@@ -319,7 +363,7 @@ def main(argv=None):
     try:
         with single_run(state_dir):
             state = State(state_dir)
-            store = LocalStore(data_dir / 'mock-r2') if args.mock else (None if args.dry_run else R2Store())
+            store = LocalStore(data_dir / 'mock-r2') if args.mock else (None if args.dry_run else (LocalStore(Path(os.environ['NAS_LIBRARY_DIR'])) if os.getenv('STORAGE_MODE') == 'nas' else R2Store()))
             if args.retention_report:
                 existing = validate_catalog(store.get_json('metadata/catalog.json'))
                 cutoff = args.date - timedelta(days=int(os.getenv('RETENTION_DAYS', '90')))

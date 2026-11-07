@@ -1,0 +1,11 @@
+services:
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.7
+    command: tunnel --no-autoupdate run
+    env_file: .env.tunnel
+    depends_on:
+      - web
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
