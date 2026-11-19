@@ -206,12 +206,28 @@ export default function Library() {
     window.addEventListener("pagehide", save);
     return () => window.removeEventListener("pagehide", save);
   }, []);
+  // 플레이어를 비우고 보관함으로 돌아가 다른 날짜의 예배를 고를 수 있게 한다.
+  function closePlayer() {
+    const el = audio.current!;
+    requestSeq.current++;
+    active.current = undefined;
+    el.pause();
+    el.removeAttribute("src");
+    el.load();
+    URL.revokeObjectURL(blobUrl.current);
+    blobUrl.current = "";
+    setCurrent(undefined);
+    setPlaying(false);
+    setBusy(false);
+    setPosition(0);
+    document.querySelector(".archive")?.scrollIntoView({ block: "start" });
+  }
   function choose(item: Item) {
     if (active.current && audio.current)
       saveResume(active.current.id, audio.current.currentTime);
     mediaFailures.current = 0;
     void open(item, savedPosition(item.id));
-    document.querySelector(".word-sheet")?.scrollIntoView({block: "start"});
+    window.scrollTo({ top: 0 });
   }
   const today = todayKST(),
     todays = items.filter((i) => i.serviceDate === today),
@@ -243,7 +259,7 @@ export default function Library() {
 
       </header>
       <main>
-        <DailyWord key={current?.serviceDate || today} date={current?.serviceDate || today} />
+        {playing && current && <DailyWord key={current.serviceDate} date={current.serviceDate} />}
         {mock && (
           <div className="notice">
             개발용 샘플 모드 · 실제 예배가 아닌 12초 테스트 음원입니다. 날짜는
@@ -429,6 +445,7 @@ export default function Library() {
               saveResume(active.current.id, 0);
               setResume(readResume());
             }
+            closePlayer();
           }}
           onTimeUpdate={() => {
             const el = audio.current!;
@@ -508,6 +525,17 @@ export default function Library() {
             >
               15 ↷
             </button>
+            <button
+              disabled={!current}
+              aria-label="정지하고 다른 예배 선택"
+              onClick={() => {
+                saveResume(active.current!.id, audio.current!.currentTime);
+                setResume(readResume());
+                closePlayer();
+              }}
+            >
+              ■
+            </button>
           </div>
           <div className="seek">
             <span>{clock(position)}</span>
@@ -535,10 +563,14 @@ export default function Library() {
           el.currentTime = Math.min(el.duration, Number(match[1]) * 60 + Number(match[2]));
           setPosition(el.currentTime);
         }}>
-          <button type="button" disabled={!current || busy} onClick={() => {
-            const el = audio.current;
-            if (el && Number.isFinite(el.duration)) el.currentTime = Math.min(el.duration, el.currentTime + 60);
-          }}>준비 시간 +1분</button>
+          {[1, 5].map(minutes => (
+            <button key={minutes} type="button" disabled={!current || busy} aria-label={`${minutes}분 앞으로`} onClick={() => {
+              const el = audio.current;
+              if (!el || !Number.isFinite(el.duration)) return;
+              el.currentTime = Math.min(el.duration, el.currentTime + minutes * 60);
+              setPosition(el.currentTime);
+            }}>+{minutes}분</button>
+          ))}
           <input aria-label="이동할 분:초" placeholder="분:초" pattern="[0-9]+:[0-5][0-9]" required value={jump} onChange={e => setJump(e.target.value)} />
           <button disabled={!current || busy}>이동</button>
         </form>

@@ -601,3 +601,20 @@ footer {
 .seek input{height:24px}
 .word-sheet{background:#f6f2e8;color:#304637;border-radius:16px;padding:clamp(1.2rem,4vw,3rem);margin:1rem 0}
 .word-scroll{white-space:pre-wrap;line-height:1.9;max-height:48vh;overflow-y:auto;font-family:serif;font-size:1.12rem;overflow-wrap:anywhere}
+
+.word-languages {
+  display: flex;
+  gap: .5rem;
+  margin-bottom: 1rem;
+}
+.word-languages button {
+  padding: .4rem .85rem;
+  border: 1px solid #526858;
+  border-radius: 1rem;
+  color: #304637;
+  background: transparent;
+}
+.word-languages button[aria-pressed="true"] {
+  color: white;
+  background: #304637;
+}

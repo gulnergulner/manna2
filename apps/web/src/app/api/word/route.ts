@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   if (!url) return new Response(null, {status: 503});
   try {
     db ??= postgres(url, { max: 2, prepare: false, connect_timeout: 5, idle_timeout: 20 });
-    const [word] = await db`select "koreanText", "scriptureReference" from "StudyEntry"
+    const [word] = await db`select "koreanText", "englishText", "scriptureReference" from "StudyEntry"
       where date = ${date} and published = true limit 1`;
     return Response.json(word ?? null, { headers: { "Cache-Control": "private, no-store" } });
   } catch { return new Response(null, { status: 503 }); }
