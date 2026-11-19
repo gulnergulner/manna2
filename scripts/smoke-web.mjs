@@ -158,14 +158,16 @@ try {
         document.querySelector("audio").currentTime = 4;
       });
       await page.getByRole("button", { name: "일시정지", exact: true }).click();
-      await page.getByLabel("재생 속도", { exact: true }).selectOption("1.5");
+      await page.getByLabel("이동할 분:초").fill("0:05");
+      await page.getByRole("button", { name: "이동", exact: true }).click();
+      assert.equal(await page.locator("audio").evaluate(el => Math.floor(el.currentTime)), 5);
       const saved = await page
         .locator("audio")
         .evaluate((el) => el.currentTime);
       await page.getByRole("button", { name: "재생", exact: true }).click();
       await page.waitForFunction((min) => {
         const el = document.querySelector("audio");
-        return !el.paused && el.currentTime >= min && el.playbackRate === 1.5;
+        return !el.paused && el.currentTime >= min;
       }, saved - 0.3);
       await page.getByRole("button", { name: "일시정지", exact: true }).click();
       await page.reload();
@@ -191,10 +193,21 @@ try {
         ),
         true,
       );
+      await page.clock.setFixedTime(new Date("2026-10-27T09:00:00+09:00"));
+      await page.reload();
+      await page.getByRole("button", {name: "오늘 말씀 기기에 저장"}).click();
+      await page.getByRole("button", {name: "기기 저장 삭제"}).waitFor();
+      await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+      await page.context().setOffline(true);
+      await page.reload();
+      await page.getByRole("button", {name: /하루의 시작/}).click();
+      await page.waitForFunction(() => document.querySelector("audio")?.currentTime > 0);
+      await page.context().setOffline(false);
+      await page.goto(origin);
       await page.getByRole("button", { name: /로그아웃/ }).click();
       await page.getByLabel("접속 비밀번호").waitFor();
       console.log(
-        "Chrome browser: login, search, date filter, playback, speed, forced URL renewal, resume, mobile layout, logout passed",
+        "Chrome browser: login, search, date filter, playback, timestamp seek, offline reload and playback, forced URL renewal, resume, mobile layout, logout passed",
       );
     } finally {
       await browser.close();

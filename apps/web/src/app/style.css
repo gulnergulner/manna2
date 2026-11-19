@@ -593,3 +593,9 @@ footer {
     font-size: 10px;
   }
 }
+.jump-time {display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+.jump-time input {width:5rem;padding:.45rem}
+@media(max-width:700px){.jump-time{order:3}.shell{padding-bottom:270px}}
+.jump-time button,.today button:not(.primary){border:1px solid var(--line);background:white;color:var(--green);border-radius:6px;padding:.5rem .75rem}
+.today button:not(.primary){margin-top:.5rem}
+.seek input{height:24px}

@@ -47,7 +47,9 @@ export default function Library() {
     [resume, setResume] = useState<Resume>(),
     [position, setPosition] = useState(0),
     [playing, setPlaying] = useState(false),
-    [rate, setRate] = useState(1),
+    [jump, setJump] = useState(""),
+    [stored, setStored] = useState<string[]>([]),
+    [saving, setSaving] = useState(""),
     [busy, setBusy] = useState(false);
   const audio = useRef<HTMLAudioElement>(null),
     expires = useRef(0),
@@ -56,6 +58,36 @@ export default function Library() {
     requestSeq = useRef(0),
     refreshing = useRef(false),
     mediaFailures = useRef(0);
+  const blobUrl = useRef("");
+  const cacheName = "manna-audio-v1";
+  const cacheKey = (id: string) => "/saved-audio/" + encodeURIComponent(id);
+  useEffect(() => {
+    if (window.caches) void caches.open(cacheName).then(c => c.keys()).then(keys =>
+      setStored(keys.map(k => new URL(k.url).pathname.split("/").pop()!))).catch(() => {});
+    return () => URL.revokeObjectURL(blobUrl.current);
+  }, []);
+  async function toggleSave(item: Item) {
+    setSaving(item.id);
+    try {
+      const cache = await caches.open(cacheName);
+      if (stored.includes(item.id)) {
+        await cache.delete(cacheKey(item.id));
+        setStored(ids => ids.filter(id => id !== item.id));
+      } else {
+        await navigator.serviceWorker.register("/manna-sw.js");
+        await navigator.serviceWorker.ready;
+        const link = await fetch(`/api/sermons/${item.id}/play-url`);
+        if (!link.ok) throw Error();
+        const response = await fetch((await link.json()).url);
+        if (response.status !== 200 || !response.headers.get("Content-Type")?.startsWith("audio/")) throw Error();
+        await cache.put(cacheKey(item.id), new Response(response.body, { headers: {
+          "Content-Type": "audio/mpeg", "X-Manna-Title": encodeURIComponent(item.title),
+        }}));
+        setStored(ids => [...ids, item.id]);
+      }
+    } catch { setError("기기 저장을 완료하지 못했습니다. 연결과 저장 공간을 확인해 주세요."); }
+    finally { setSaving(""); }
+  }
   const load = useCallback(async () => {
     try {
       const [r, s] = await Promise.all([
@@ -91,25 +123,32 @@ export default function Library() {
       setBusy(true);
       setError("");
       try {
-        const r = await fetch(
-          `/api/sermons/${encodeURIComponent(item.id)}/play-url`,
-        );
-        if (r.status === 401) {
-          location.reload();
-          return;
+        const saved = window.caches && await caches.match(cacheKey(item.id), {cacheName});
+        let url: string, until: number;
+        if (saved) {
+          const blob = await saved.blob();
+          if (seq !== requestSeq.current) return;
+          url = URL.createObjectURL(blob);
+          until = Infinity;
+        } else {
+          const r = await fetch(`/api/sermons/${encodeURIComponent(item.id)}/play-url`);
+          if (r.status === 401) { location.reload(); return; }
+          if (!r.ok) throw new Error("음원을 열 수 없습니다.");
+          const data = await r.json();
+          if (seq !== requestSeq.current) return;
+          url = data.url;
+          until = Date.parse(data.expiresAt);
         }
-        if (!r.ok) throw new Error("음원을 열 수 없습니다.");
-        const data = await r.json();
-        if (seq !== requestSeq.current) return;
         const el = audio.current!;
         active.current = item;
         setCurrent(item);
-        expires.current = Date.parse(data.expiresAt);
+        expires.current = until;
         el.pause();
-        el.src = data.url;
+        URL.revokeObjectURL(blobUrl.current);
+        blobUrl.current = saved ? url : "";
+        el.src = url;
         el.onloadedmetadata = () => {
           el.currentTime = resumePosition(offset, el.duration);
-          el.playbackRate = rate;
           if (autoplay)
             void el
               .play()
@@ -123,7 +162,7 @@ export default function Library() {
         if (seq === requestSeq.current) setBusy(false);
       }
     },
-    [rate],
+    [],
   );
   const renew = useCallback(
     async (force = false) => {
@@ -202,6 +241,7 @@ export default function Library() {
         <button
           className="text-button"
           onClick={async () => {
+            if (window.caches) await caches.delete(cacheName);
             await fetch("/api/auth", { method: "DELETE" });
             location.reload();
           }}
@@ -254,13 +294,13 @@ export default function Library() {
             </p>
             {todays.length ? (
               todays.map((item) => (
-                <button
+                <div key={item.id}><button
                   className="primary"
                   key={item.id}
                   onClick={() => choose(item)}
                 >
                   ▶ {item.title}
-                </button>
+                </button> <button disabled={!!saving} onClick={() => void toggleSave(item)}>{saving === item.id ? "처리 중…" : stored.includes(item.id) ? "기기 저장 삭제" : "오늘 말씀 기기에 저장"}</button></div>
               ))
             ) : (
               <p className="muted">
@@ -370,6 +410,9 @@ export default function Library() {
                   >
                     ▶
                   </button>
+                  {stored.includes(item.id) && item.serviceDate !== today && (
+                    <button className="text-button" disabled={!!saving} onClick={() => void toggleSave(item)}>기기 저장 삭제</button>
+                  )}
                   <a
                     className="download"
                     href={`/api/sermons/${item.id}/download`}
@@ -502,24 +545,21 @@ export default function Library() {
             <span>{clock(current?.durationSeconds || 0)}</span>
           </div>
         </div>
-        <label className="speed">
-          재생 속도
-          <select
-            aria-label="재생 속도"
-            value={rate}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              setRate(v);
-              if (audio.current) audio.current.playbackRate = v;
-            }}
-          >
-            {[0.75, 1, 1.25, 1.5, 1.75, 2].map((v) => (
-              <option key={v} value={v}>
-                {v}×
-              </option>
-            ))}
-          </select>
-        </label>
+        <form className="jump-time" onSubmit={e => {
+          e.preventDefault();
+          const match = /^(\d+):([0-5]\d)$/.exec(jump.trim());
+          const el = audio.current;
+          if (!match || !el || !Number.isFinite(el.duration)) return;
+          el.currentTime = Math.min(el.duration, Number(match[1]) * 60 + Number(match[2]));
+          setPosition(el.currentTime);
+        }}>
+          <button type="button" disabled={!current || busy} onClick={() => {
+            const el = audio.current;
+            if (el && Number.isFinite(el.duration)) el.currentTime = Math.min(el.duration, el.currentTime + 60);
+          }}>준비 시간 +1분</button>
+          <input aria-label="이동할 분:초" placeholder="분:초" pattern="[0-9]+:[0-5][0-9]" required value={jump} onChange={e => setJump(e.target.value)} />
+          <button disabled={!current || busy}>이동</button>
+        </form>
       </section>
     </div>
   );
