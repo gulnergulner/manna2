@@ -1,10 +1,8 @@
-import { authenticated } from "@/lib/auth";
 import { catalog, mockMode } from "@/lib/storage";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
-  if (!(await authenticated())) return new Response(null, { status: 401 });
   if (!mockMode()) return new Response(null, { status: 404 });
   const url = new URL(request.url);
   if (!(await catalog()).items.some((i) => i.id === url.searchParams.get("id")))

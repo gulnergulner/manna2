@@ -1,8 +1,6 @@
-import { authenticated } from "@/lib/auth";
 import { mockMode, readJson } from "@/lib/storage";
 export const dynamic = "force-dynamic";
 export async function GET() {
-  if (!(await authenticated())) return new Response(null, { status: 401 });
   try {
     const raw = mockMode()
       ? {

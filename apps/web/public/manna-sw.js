@@ -1,7 +1,7 @@
 // Keep only the offline player shell. Private pages and API responses stay online.
 const shell = "/saved-audio.html";
 self.addEventListener("install", event => {
-  event.waitUntil(caches.open("manna-shell-v1").then(cache => cache.add(shell)));
+  event.waitUntil(caches.open("manna-shell-v2").then(cache => cache.add(shell)));
 });
 self.addEventListener("fetch", event => {
   if (event.request.mode === "navigate" && new URL(event.request.url).pathname === "/") {

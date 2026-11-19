@@ -18,8 +18,6 @@ const proc = spawn(
     env: {
       ...process.env,
       MOCK_MODE: "true",
-      AUTH_PASSWORD: "local-smoke-password-only",
-      AUTH_SESSION_SECRET: "local-smoke-test-session-secret-32-characters",
     },
     stdio: ["ignore", "pipe", "pipe"],
   },
@@ -40,39 +38,7 @@ try {
     await new Promise((r) => setTimeout(r, 500));
   }
   assert.ok(ready, log);
-  for (const route of [
-    "/api/sermons",
-    "/api/status",
-    "/api/sermons/sample-20261027/play-url",
-    "/api/sermons/sample-20261027/download",
-    "/api/mock-audio?id=sample-20261027",
-  ])
-    assert.equal(
-      (await fetch(origin + route, { redirect: "manual" })).status,
-      401,
-      route,
-    );
-  assert.equal(
-    (
-      await fetch(origin + "/api/auth", {
-        method: "POST",
-        headers: {
-          Origin: "http://evil.test",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ password: "local-smoke-password-only" }),
-      })
-    ).status,
-    403,
-  );
-  const login = await fetch(origin + "/api/auth", {
-    method: "POST",
-    headers: { Origin: origin, "Content-Type": "application/json" },
-    body: JSON.stringify({ password: "local-smoke-password-only" }),
-  });
-  assert.equal(login.status, 200);
-  const cookie = login.headers.get("set-cookie").split(";")[0];
-  const headers = { Cookie: cookie };
+  const headers = {};
   const response = await fetch(origin + "/api/sermons", { headers });
   assert.equal(response.status, 200);
   const data = await response.json();
@@ -108,7 +74,7 @@ try {
   });
   assert.match(file.headers.get("content-disposition"), /^attachment/);
   console.log(
-    "HTTP smoke: auth, catalog, key rejection, signing, MP3 Range and download passed",
+    "HTTP smoke: public catalog, key rejection, signing, MP3 Range and download passed",
   );
   if (process.argv.includes("--browser")) {
     const { chromium } = await import("@playwright/test");
@@ -123,9 +89,10 @@ try {
         viewport: { width: 1440, height: 1100 },
       });
       await page.goto(origin);
-      await page.getByLabel("접속 비밀번호").fill("local-smoke-password-only");
-      await page.getByRole("button", { name: "보관함 들어가기" }).click();
       await page.getByRole("heading", { name: /예배 보관함/ }).waitFor();
+      if (process.env.MANNA_DATABASE_URL) {
+        await page.getByRole("region", {name:"말씀 본문"}).waitFor();
+      }
       await page.getByText("개발용 샘플 모드", { exact: false }).waitFor();
       await page.getByLabel("제목 검색").fill("평안");
       assert.equal(await page.locator("article").count(), 1);
@@ -204,10 +171,8 @@ try {
       await page.waitForFunction(() => document.querySelector("audio")?.currentTime > 0);
       await page.context().setOffline(false);
       await page.goto(origin);
-      await page.getByRole("button", { name: /로그아웃/ }).click();
-      await page.getByLabel("접속 비밀번호").waitFor();
       console.log(
-        "Chrome browser: login, search, date filter, playback, timestamp seek, offline reload and playback, forced URL renewal, resume, mobile layout, logout passed",
+        "Chrome browser: search, date filter, playback, timestamp seek, offline reload and playback, forced URL renewal, resume, mobile layout passed",
       );
     } finally {
       await browser.close();

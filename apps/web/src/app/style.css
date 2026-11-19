@@ -599,3 +599,5 @@ footer {
 .jump-time button,.today button:not(.primary){border:1px solid var(--line);background:white;color:var(--green);border-radius:6px;padding:.5rem .75rem}
 .today button:not(.primary){margin-top:.5rem}
 .seek input{height:24px}
+.word-sheet{background:#f6f2e8;color:#304637;border-radius:16px;padding:clamp(1.2rem,4vw,3rem);margin:1rem 0}
+.word-scroll{white-space:pre-wrap;line-height:1.9;max-height:48vh;overflow-y:auto;font-family:serif;font-size:1.12rem;overflow-wrap:anywhere}

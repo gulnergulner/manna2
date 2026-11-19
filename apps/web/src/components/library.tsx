@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import DailyWord from "./daily-word";
 import type { Sermon } from "@/lib/catalog";
 import {
   readResume,
@@ -210,6 +211,7 @@ export default function Library() {
       saveResume(active.current.id, audio.current.currentTime);
     mediaFailures.current = 0;
     void open(item, savedPosition(item.id));
+    document.querySelector(".word-sheet")?.scrollIntoView({block: "start"});
   }
   const today = todayKST(),
     todays = items.filter((i) => i.serviceDate === today),
@@ -235,33 +237,13 @@ export default function Library() {
     <div className="shell">
       <header>
         <a className="brand" href="/">
-          ☀ <strong>만나</strong>
+          ☀ <strong>새가나안교회 만나</strong>
           <span>새벽을 듣다</span>
         </a>
-        <button
-          className="text-button"
-          onClick={async () => {
-            if (window.caches) await caches.delete(cacheName);
-            await fetch("/api/auth", { method: "DELETE" });
-            location.reload();
-          }}
-        >
-          로그아웃 ↗
-        </button>
+
       </header>
       <main>
-        <section className="intro">
-          <span className="eyebrow">MORNING WORD, EVERY DAY</span>
-          <h1>
-            말씀으로 여는
-            <br />
-            <em>고요한 아침.</em>
-          </h1>
-          <p>새가나안교회 새벽예배 · 전체 예배 음성</p>
-          <div className="intro-mark" aria-hidden="true">
-            ☀
-          </div>
-        </section>
+        <DailyWord key={current?.serviceDate || today} date={current?.serviceDate || today} />
         {mock && (
           <div className="notice">
             개발용 샘플 모드 · 실제 예배가 아닌 12초 테스트 음원입니다. 날짜는
@@ -426,7 +408,7 @@ export default function Library() {
           )}
         </section>
         <footer>
-          만나 · 하루에 한 번, 말씀 곁에.
+          새가나안교회 만나 · 하루에 한 번, 말씀 곁에.
           <span>
             음원은 전체 예배입니다. 설교 구간이 별도로 분리되지 않습니다.
           </span>

@@ -1,13 +1,7 @@
-import { authenticated } from "@/lib/auth";
 import { catalog, mockMode } from "@/lib/storage";
 import { publicItem } from "@/lib/catalog";
 export const dynamic = "force-dynamic";
 export async function GET() {
-  if (!(await authenticated()))
-    return Response.json(
-      { error: "로그인이 필요합니다." },
-      { status: 401, headers: { "Cache-Control": "no-store" } },
-    );
   try {
     const c = await catalog();
     return Response.json(

@@ -1,4 +1,3 @@
-import { authenticated } from "@/lib/auth";
 import { catalog, disposition } from "@/lib/storage";
 import { open } from "node:fs/promises";
 import { Readable } from "node:stream";
@@ -6,7 +5,6 @@ import path from "node:path";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await authenticated())) return new Response(null, { status: 401 });
   if (process.env.STORAGE_MODE !== "nas" || !process.env.NAS_LIBRARY_DIR) return new Response(null, { status: 404 });
   const { id } = await params;
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return new Response(null, { status: 404 });

@@ -1,45 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  makeSession,
-  verifySession,
-  checkPassword,
-  sameOrigin,
-} from "../src/lib/auth";
 import { parseCatalog, publicItem } from "../src/lib/catalog";
 import { disposition, mockMode } from "../src/lib/storage";
 import { resumePosition } from "../src/lib/playback";
 import fixture from "../../../fixtures/catalog.json";
-process.env.AUTH_SESSION_SECRET = "test-only-session-secret-longer-than-32";
-process.env.AUTH_PASSWORD = "test-only-password-for-core-tests";
-test("sessions reject tampering, expiration and missing cookies", () => {
-  const now = Date.now();
-  const session = makeSession(now);
-  assert.equal(verifySession(session, now), true);
-  assert.equal(verifySession(session + "x", now), false);
-  assert.equal(verifySession(session, now + 86401000), false);
-  assert.equal(verifySession(undefined), false);
-  assert.equal(checkPassword(process.env.AUTH_PASSWORD!), true);
-  assert.equal(checkPassword("wrong"), false);
-});
-test("mutations require same origin", () => {
-  assert.equal(
-    sameOrigin(
-      new Request("http://localhost/api/auth", {
-        headers: { Origin: "http://evil.test" },
-      }),
-    ),
-    false,
-  );
-  assert.equal(
-    sameOrigin(
-      new Request("http://localhost/api/auth", {
-        headers: { Origin: "http://localhost" },
-      }),
-    ),
-    true,
-  );
-});
 test("catalog rejects arbitrary keys, duplicate ids and corrupt records", () => {
   assert.equal(parseCatalog(fixture).items.length, 2);
   const bad = structuredClone(fixture);
