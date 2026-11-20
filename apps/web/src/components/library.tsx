@@ -16,6 +16,31 @@ type Status = {
   lastCheckedAt?: string;
   lastPublishedAt?: string;
 };
+type SaveOperation = {
+  id: string;
+  phase: "preparing" | "downloading" | "removing";
+};
+const cacheName = "manna-audio-v1";
+const cacheKey = (id: string) => "/saved-audio/" + encodeURIComponent(id);
+
+async function prepareOfflinePlayer() {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const ready = async () => {
+    await navigator.serviceWorker.register("/manna-sw.js?v=3", { updateViaCache: "none" });
+    await navigator.serviceWorker.ready;
+  };
+  try {
+    await Promise.race([
+      ready(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("오프라인 재생을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.")), 15000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function clock(seconds: number) {
   const s = Math.max(0, Math.floor(seconds));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -50,7 +75,8 @@ export default function Library() {
     [playing, setPlaying] = useState(false),
     [jump, setJump] = useState(""),
     [stored, setStored] = useState<string[]>([]),
-    [saving, setSaving] = useState(""),
+    [saving, setSaving] = useState<SaveOperation>(),
+    [saveError, setSaveError] = useState(""),
     [busy, setBusy] = useState(false);
   const audio = useRef<HTMLAudioElement>(null),
     expires = useRef(0),
@@ -60,34 +86,57 @@ export default function Library() {
     refreshing = useRef(false),
     mediaFailures = useRef(0);
   const blobUrl = useRef("");
-  const cacheName = "manna-audio-v1";
-  const cacheKey = (id: string) => "/saved-audio/" + encodeURIComponent(id);
   useEffect(() => {
     if (window.caches) void caches.open(cacheName).then(c => c.keys()).then(keys =>
       setStored(keys.map(k => new URL(k.url).pathname.split("/").pop()!))).catch(() => {});
     return () => URL.revokeObjectURL(blobUrl.current);
   }, []);
   async function toggleSave(item: Item) {
-    setSaving(item.id);
+    const removing = stored.includes(item.id);
+    setSaveError("");
+    setSaving({ id: item.id, phase: removing ? "removing" : "preparing" });
+    let message = "기기 저장을 변경하지 못했습니다. 연결과 저장 공간을 확인해 주세요.";
+    const download = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
+      if (!window.caches || (!removing && !navigator.serviceWorker)) {
+        message = "이 브라우저에서는 기기 저장을 사용할 수 없습니다.";
+        throw new Error();
+      }
       const cache = await caches.open(cacheName);
-      if (stored.includes(item.id)) {
+      if (removing) {
         await cache.delete(cacheKey(item.id));
         setStored(ids => ids.filter(id => id !== item.id));
       } else {
-        await navigator.serviceWorker.register("/manna-sw.js");
-        await navigator.serviceWorker.ready;
-        const link = await fetch(`/api/sermons/${item.id}/play-url`);
-        if (!link.ok) throw Error();
-        const response = await fetch((await link.json()).url);
-        if (response.status !== 200 || !response.headers.get("Content-Type")?.startsWith("audio/")) throw Error();
-        await cache.put(cacheKey(item.id), new Response(response.body, { headers: {
-          "Content-Type": "audio/mpeg", "X-Manna-Title": encodeURIComponent(item.title),
-        }}));
-        setStored(ids => [...ids, item.id]);
+        message = "오프라인 재생을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+        await prepareOfflinePlayer();
+        setSaving({ id: item.id, phase: "downloading" });
+        timer = setTimeout(() => download.abort(), 180000);
+        message = "음원을 끝까지 받지 못했습니다. 연결을 확인한 후 다시 시도해 주세요.";
+        const link = await fetch(`/api/sermons/${encodeURIComponent(item.id)}/play-url`, { signal: download.signal });
+        if (!link.ok) throw new Error();
+        const { url } = await link.json();
+        const response = await fetch(url, { signal: download.signal });
+        if (response.status !== 200 || !response.headers.get("Content-Type")?.startsWith("audio/")) throw new Error();
+        const blob = await response.blob();
+        clearTimeout(timer);
+        if (blob.size === 0 || blob.size !== item.sizeBytes) throw new Error();
+
+        message = "기기 저장을 완료하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.";
+        await cache.put(cacheKey(item.id), new Response(blob, {
+          headers: {
+            "Content-Type": "audio/mpeg",
+            "X-Manna-Title": encodeURIComponent(item.title),
+          },
+        }));
+        setStored(ids => ids.includes(item.id) ? ids : [...ids, item.id]);
       }
-    } catch { setError("기기 저장을 완료하지 못했습니다. 연결과 저장 공간을 확인해 주세요."); }
-    finally { setSaving(""); }
+    } catch {
+      setSaveError(download.signal.aborted ? "음원을 받는 시간이 초과됐습니다. 연결을 확인한 후 다시 시도해 주세요." : message);
+    } finally {
+      clearTimeout(timer);
+      setSaving(undefined);
+    }
   }
   const load = useCallback(async () => {
     try {
@@ -158,7 +207,7 @@ export default function Library() {
         el.load();
         setPosition(offset);
       } catch (e) {
-        setError((e as Error).message);
+        if (seq === requestSeq.current) setError((e as Error).message);
       } finally {
         if (seq === requestSeq.current) setBusy(false);
       }
@@ -211,6 +260,7 @@ export default function Library() {
     const el = audio.current!;
     requestSeq.current++;
     active.current = undefined;
+    el.onloadedmetadata = null;
     el.pause();
     el.removeAttribute("src");
     el.load();
@@ -274,6 +324,7 @@ export default function Library() {
             </button>
           </div>
         )}
+        {saveError && <div className="notice error" role="alert">{saveError}</div>}
         <section className="overview">
           <div className="today">
             <div className="section-top">
@@ -292,13 +343,14 @@ export default function Library() {
             </p>
             {todays.length ? (
               todays.map((item) => (
-                <div key={item.id}><button
-                  className="primary"
-                  key={item.id}
-                  onClick={() => choose(item)}
-                >
-                  ▶ {item.title}
-                </button> <button disabled={!!saving} onClick={() => void toggleSave(item)}>{saving === item.id ? "처리 중…" : stored.includes(item.id) ? "기기 저장 삭제" : "오늘 말씀 기기에 저장"}</button></div>
+                <div key={item.id}>
+                  <button className="primary" onClick={() => choose(item)}>▶ {item.title}</button>{" "}
+                  <button disabled={!!saving} onClick={() => void toggleSave(item)}>
+                    {saving?.id === item.id
+                      ? { preparing: "저장 준비 중…", downloading: "음원 저장 중…", removing: "삭제 중…" }[saving.phase]
+                      : stored.includes(item.id) ? "기기 저장 삭제" : "오늘 말씀 기기에 저장"}
+                  </button>
+                </div>
               ))
             ) : (
               <p className="muted">
@@ -430,7 +482,7 @@ export default function Library() {
           </span>
         </footer>
       </main>
-      <section className="player" aria-label="음원 플레이어">
+      <section className="player" aria-label="음원 플레이어" hidden={!current && !busy}>
         <audio
           ref={audio}
           preload="metadata"
@@ -465,6 +517,15 @@ export default function Library() {
               );
           }}
         />
+        <button type="button" className="player-close" aria-label="플레이어 닫기" onClick={() => {
+          if (active.current && audio.current) {
+            saveResume(active.current.id, audio.current.currentTime);
+            setResume(readResume());
+          }
+          closePlayer();
+        }}>
+          <span aria-hidden="true">×</span>
+        </button>
         <div className="now-playing">
           <small>
             {busy
@@ -524,17 +585,6 @@ export default function Library() {
               }}
             >
               15 ↷
-            </button>
-            <button
-              disabled={!current}
-              aria-label="정지하고 다른 예배 선택"
-              onClick={() => {
-                saveResume(active.current!.id, audio.current!.currentTime);
-                setResume(readResume());
-                closePlayer();
-              }}
-            >
-              ■
             </button>
           </div>
           <div className="seek">

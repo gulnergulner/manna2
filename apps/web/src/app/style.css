@@ -339,20 +339,42 @@ footer {
   bottom: 0;
   left: 0;
   right: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 360px) minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
-  gap: 40px;
+  gap: clamp(12px, 3vw, 40px);
   background: #fffffff5;
   border-top: 1px solid var(--line);
   padding: 20px 32px;
   backdrop-filter: blur(18px);
   z-index: 2;
 }
+.player[hidden] {
+  display: none;
+}
+.player-close {
+  position: absolute;
+  top: 4px;
+  right: max(8px, env(safe-area-inset-right));
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--green);
+  font-size: 25px;
+  line-height: 1;
+}
+.player-close:hover {
+  background: var(--paper);
+}
 .now-playing {
   display: flex;
   flex-direction: column;
-  width: 260px;
+  width: min(100%, 260px);
+  justify-self: end;
   gap: 5px;
 }
 .now-playing small {
@@ -370,11 +392,9 @@ footer {
   font-size: 10px;
   color: var(--muted);
 }
-.transport {
-  width: 360px;
-}
 .controls {
-  display: flex;
+  display: grid;
+  grid-template-columns: 52px 44px 52px;
   justify-content: center;
   gap: 24px;
   align-items: center;
@@ -386,8 +406,8 @@ footer {
   font-size: 12px;
 }
 .controls .main-play {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   background: var(--green);
   color: white;
   border-radius: 50%;
@@ -568,12 +588,13 @@ footer {
     gap: 8px;
   }
   .player {
-    flex-wrap: wrap;
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
     padding: 15px 20px calc(15px + env(safe-area-inset-bottom));
   }
   .now-playing {
-    width: calc(100% - 90px);
+    width: 100%;
+    padding-right: 44px;
   }
   .speed {
     width: 70px;
@@ -593,9 +614,9 @@ footer {
     font-size: 10px;
   }
 }
-.jump-time {display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+.jump-time {display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding-right:32px}
 .jump-time input {width:5rem;padding:.45rem}
-@media(max-width:700px){.jump-time{order:3}.shell{padding-bottom:270px}}
+@media(max-width:700px){.jump-time{order:3;justify-content:center;padding-right:0}.shell{padding-bottom:270px}}
 .jump-time button,.today button:not(.primary){border:1px solid var(--line);background:white;color:var(--green);border-radius:6px;padding:.5rem .75rem}
 .today button:not(.primary){margin-top:.5rem}
 .seek input{height:24px}
