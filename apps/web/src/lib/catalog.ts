@@ -6,6 +6,7 @@ export type Sermon = {
   title: string;
   sourceUrl: string;
   broadcastStartedAt: string;
+  serviceKind?: "dawn" | "evening" | "sunday";
   serviceDate: string;
   durationSeconds: number;
   sizeBytes: number;
@@ -35,5 +36,5 @@ export function parseCatalog(value: unknown): Catalog {
   return catalog;
 }
 export function publicItem({ objectKey: _, ...item }: Sermon) {
-  return item;
+  return { ...item, serviceKind: item.serviceKind ?? "dawn" };
 }

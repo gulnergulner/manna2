@@ -1,6 +1,6 @@
-# 새가나안교회 만나 — 새벽예배 음성 보관함
+# 새가나안교회 만나 — 교회 예배 음성 보관함
 
-새가나안교회 새벽 방송을 NAS에서 MP3를 준비하고 NAS에 실행하는 웹에서 청취하는 MVP입니다. 웹은 **Synology / Next.js**, 수집기는 **Synology / Python + yt-dlp + FFmpeg + Deno**입니다. 기존 R2/Vercel 모드도 코드에 남아 있습니다. 음원은 설교 구간이 아닌 전체 예배입니다.
+월–금 새벽예배와 저녁 영성집회, 주일 오전 예배의 방송을 NAS에 MP3로 저장하고 웹 보관함에서 예배 종류별로 들을 수 있습니다. 웹은 **Synology / Next.js**, 수집기는 **Synology / Python + yt-dlp + FFmpeg + Deno**입니다. 기존 R2/Vercel 모드도 코드에 남아 있습니다. 음원은 설교 구간이 아닌 전체 예배입니다.
 
 NAS 운영은 [NAS 서비스 실행 안내](docs/nas-service.md)를 참고하세요. 새 NAS 구성은 실환경 검증 전입니다.
 

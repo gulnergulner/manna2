@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 from filelock import Timeout
-from collector import Collector, KST, LocalStore, State, select, single_run, validate_catalog, safe_error, main
+from collector import Collector, KST, LocalStore, State, select, service_kind, single_run, validate_catalog, safe_error, main
 
 DAY = date(2026, 10, 27)
 def info(video='test-video', hour=5, minute=0, status='was_live'):
@@ -19,6 +19,18 @@ class SelectionTest(unittest.TestCase):
         self.assertEqual(select(info(hour=6, minute=30), DAY), 'outside')
         self.assertEqual(select(info(hour=8), DAY), 'outside')
         self.assertEqual(select(info(), date(2026, 10, 28)), 'outside')
+    def test_weekly_service_windows(self):
+        for day, hour, expected in [
+            (16, 5, 'dawn'), (20, 5, 'dawn'), (20, 16, 'outside'),
+            (20, 17, 'evening'), (20, 23, 'evening'), (21, 5, 'outside'),
+            (21, 19, 'outside'), (22, 6, 'sunday'), (22, 11, 'sunday'),
+            (22, 12, 'outside'), (22, 19, 'outside'),
+        ]:
+            started = datetime(2026, 11, day, hour, tzinfo=KST)
+            meta = dict(info(), release_timestamp=started.timestamp())
+            with self.subTest(day=day, hour=hour):
+                self.assertEqual(service_kind(meta, started.date()), expected)
+
     def test_not_ready_and_uncertain_timestamps(self):
         for status in ['is_live', 'is_upcoming', 'post_live', 'not_live', None]:
             self.assertEqual(select(info(status=status), DAY), 'waiting')

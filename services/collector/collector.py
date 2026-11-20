@@ -53,7 +53,7 @@ def validate_catalog(value):
             raise ValueError('inconsistent_catalog')
     return value
 
-def select(info, day, start='00:00', end='06:30'):
+def service_kind(info, day, start='00:00', end='06:30'):
     """release_timestamp is preferred; upload dates and title dates are never inferred."""
     stamp = info.get('release_timestamp')
     if stamp is None:
@@ -64,14 +64,28 @@ def select(info, day, start='00:00', end='06:30'):
         instant = datetime.fromtimestamp(stamp, KST)
     except (ValueError, OverflowError, OSError):
         return 'review'
-    lo = datetime.combine(day, time.fromisoformat(start), KST)
-    hi = datetime.combine(day, time.fromisoformat(end), KST)
-    if not lo <= instant < hi:
+    if instant.date() != day:
         return 'outside'
+    local_time = instant.time()
+    if day.weekday() < 5:
+        if time.fromisoformat(start) <= local_time < time.fromisoformat(end):
+            return 'dawn'
+        if local_time >= time.fromisoformat(os.getenv('EVENING_START', '17:00')):
+            return 'evening'
+    if day.weekday() == 6 and time.fromisoformat(os.getenv('SUNDAY_START', '06:00')) <= local_time < time.fromisoformat(os.getenv('SUNDAY_END', '12:00')):
+        return 'sunday'
+    return 'outside'
+
+def selection_for_kind(info, kind):
+    if kind in ('outside', 'review'):
+        return kind
     status = info.get('live_status')
     if status == 'was_live' or (status == 'post_live' and expected_duration(info) is not None):
         return 'selected'
     return 'waiting'
+
+def select(info, day, start='00:00', end='06:30'):
+    return selection_for_kind(info, service_kind(info, day, start, end))
 
 def safe_error(error):
     # Never retain raw exception bodies, CLI stderr, URL query strings, or credentials.
@@ -304,6 +318,7 @@ class Collector:
                 payload = {'item': {'id': video, 'title': info.get('title') or video, 'sourceUrl': f'https://www.youtube.com/watch?v={video}', 'broadcastStartedAt': started.isoformat(), 'serviceDate': started.date().isoformat(), 'durationSeconds': duration, 'sizeBytes': size, 'bitrateKbps': int(os.getenv('AUDIO_BITRATE', '192K').upper().removesuffix('K')), 'objectKey': f'audio/{started:%Y/%m}/{video}.mp3', 'publishedAt': now(), 'audioScope': 'full_service', 'availability': 'available'}, 'sha256': sha256(final)}
                 self.state.stage(video, 'converted', payload)
             item = payload['item']
+            item['serviceKind'] = info.get('serviceKind', item.get('serviceKind', 'dawn'))
             validate_catalog({'schemaVersion': 1, 'updatedAt': now(), 'items': [item]})
             stage = 'upload'
             if not self.store.verified(item['objectKey'], item['sizeBytes'], payload['sha256']):
@@ -391,7 +406,8 @@ def main(argv=None):
                 print(json.dumps({'deletionEnabled': False, 'candidates': [{'id': i['id'], 'localExists': (data_dir / f"{i['id']}.mp3").exists()} for i in existing['items'] if date.fromisoformat(i['serviceDate']) < cutoff]}))
                 return 0
             start, end = os.getenv('WINDOW_START', '00:00'), os.getenv('WINDOW_END', '06:30')
-            if time.fromisoformat(start) >= time.fromisoformat(end):
+            if (not time.fromisoformat(start) < time.fromisoformat(end) <= time.fromisoformat(os.getenv('EVENING_START', '17:00'))
+                    or time.fromisoformat(os.getenv('SUNDAY_START', '06:00')) >= time.fromisoformat(os.getenv('SUNDAY_END', '12:00'))):
                 raise ValueError('invalid_window')
             if args.upload_only:
                 entries = [json.loads(r['info']) for r in state.db.execute("SELECT * FROM jobs WHERE state IN ('converted','uploaded')")]
@@ -458,8 +474,11 @@ def main(argv=None):
                             state.fail(info['id'], 'metadata', RuntimeError(info['discovery_error']))
                     print(json.dumps({'id': info['id'], 'selection': 'metadata_failed', 'code': info['discovery_error']}))
                     continue
-                choice = select(info, args.date, start, end)
-                print(json.dumps({'id': info['id'], 'selection': choice, 'release_timestamp': info.get('release_timestamp'), 'timestamp': info.get('timestamp'), 'live_status': info.get('live_status'), 'channel_id': channel_id}))
+                kind = service_kind(info, args.date, start, end)
+                choice = selection_for_kind(info, kind)
+                if kind in ('dawn', 'evening', 'sunday'):
+                    info['serviceKind'] = kind
+                print(json.dumps({'id': info['id'], 'selection': choice, 'serviceKind': info.get('serviceKind'), 'release_timestamp': info.get('release_timestamp'), 'timestamp': info.get('timestamp'), 'live_status': info.get('live_status'), 'channel_id': channel_id}))
                 if args.dry_run:
                     continue
                 if choice in ['waiting', 'review']:

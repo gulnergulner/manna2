@@ -24,11 +24,18 @@ sudo docker compose -f compose.nas.yaml --profile collector run --rm collector -
 
 웹은 NAS 호스트의 `127.0.0.1:3100`에만 바인딩됩니다. HTTPS 역방향 프록시 또는 사설망 접근 방법을 별도로 구성해야 하며 QuickConnect가 임의의 컨테이너 웹을 전달한다고 가정하지 않습니다. 공개 역방향 프록시를 사용할 경우 DSM과 다른 호스트명, 유효한 인증서, 속도 제한을 구성하고 적용 상태를 확인하세요.  브라우저의 아이폰 재생·Range 요청과 인증서/프록시 동작을 실제로 점검해야 합니다.
 
-실제 수집은 dry-run으로 방송 시각 및 채널을 확인한 후 `--dry-run`을 제거합니다. DSM 작업 스케줄러에서 06:30 및 재시도 작업을 같은 명령으로 실행합니다. 경로는 실제 NAS에서 확인합니다.
+실제 수집은 dry-run으로 방송 시각 및 채널을 확인한 후 `--dry-run`을 제거합니다. DSM 작업 스케줄러에서 기존 새벽 작업을 매일 00:30부터 23:30까지 한 시간 간격으로 설정하고 아래 스크립트를 사용합니다. 스크립트는 아래 시간대에 수집하고 다른 시간에는 바로 종료합니다. 화–토 00:30에는 전날 저녁 방송을 한 번 더 확인합니다.
+
+| 예배 | 방송 시작 시각 분류 | DSM 조회·재시도 예시 |
+| --- | --- | --- |
+| 월–금 새벽 | 00:00 이상 06:30 미만 | 06:30부터 10:30까지 매시간 |
+| 월–금 저녁 영성집회 | 17:00 이상 자정 전 | 20:30부터 23:30까지 매시간 |
+| 주일예배 | 일요일 06:00 이상 12:00 미만 | 12:30부터 16:30까지 매시간 |
+
+시간 범위는 예배 시작 시각을 판별하는 기본값입니다. 실제 방송에 맞춰 `.env.nas`의 `WINDOW_START`, `WINDOW_END`, `EVENING_START`, `SUNDAY_START`, `SUNDAY_END`를 조정할 수 있습니다. 유튜브 제목과 영상 ID는 회차별로 보관합니다. 기존 새벽 음원은 자동으로 새벽예배에 표시됩니다. 금요일 저녁과 주일에는 해당 날짜의 새벽 묵상 본문을 표시하지 않습니다.
 
 ```sh
-cd /volume4/docker/manna2 || exit 1
-/usr/local/bin/docker compose -f compose.nas.yaml --profile collector run --rm collector --retry-pending >> logs/collector.log 2>&1
+/bin/sh /volume4/docker/manna2/scripts/collect-scheduled.sh
 ```
 
 NAS가 꺼지거나 인터넷이 끊기면 외부 재생도 중단됩니다. `library`, `data`, `state`를 백업하고 자동 삭제는 별도 구현과 사용자 동의 전까지 사용하지 않습니다. 첫 수집 전에는 목록이 아직 없어 웹에 오류가 표시될 수 있습니다.

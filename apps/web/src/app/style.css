@@ -269,7 +269,8 @@ dd {
   display: flex;
   gap: 8px;
 }
-.filters input {
+.filters input,
+.filters select {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: transparent;
@@ -278,7 +279,7 @@ dd {
   color: var(--ink);
   min-width: 0;
 }
-.filters input:first-child {
+.filters input[aria-label="제목 검색"] {
   width: 170px;
 }
 .sermon-list {
@@ -564,10 +565,11 @@ footer {
     gap: 6px;
   }
   .filters {
+    flex-wrap: wrap;
     width: 100%;
     margin-bottom: 8px;
   }
-  .filters input:first-child {
+  .filters input[aria-label="제목 검색"] {
     flex: 1;
     width: 100px;
   }

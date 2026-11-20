@@ -33,6 +33,7 @@
             "pattern": "^https://www\\.youtube\\.com/watch\\?v=[A-Za-z0-9_-]+$"
           },
           "broadcastStartedAt": { "type": "string", "format": "date-time" },
+          "serviceKind": { "enum": ["dawn", "evening", "sunday"] },
           "serviceDate": { "type": "string", "format": "date" },
           "durationSeconds": { "type": "number", "exclusiveMinimum": 0 },
           "sizeBytes": { "type": "integer", "minimum": 1 },

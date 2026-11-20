@@ -10,6 +10,11 @@ import {
   type Resume,
 } from "@/lib/playback";
 type Item = Omit<Sermon, "objectKey">;
+const serviceNames = { dawn: "새벽예배", evening: "저녁 영성집회", sunday: "주일예배" };
+function sharesDailyWord(item: Item) {
+  const kind = item.serviceKind ?? "dawn";
+  return kind === "dawn" || (kind === "evening" && new Date(item.serviceDate + "T00:00:00Z").getUTCDay() !== 5);
+}
 type Status = {
   serviceDate: string;
   state: "ready" | "waiting" | "empty" | "failed";
@@ -105,6 +110,7 @@ export default function Library() {
     [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(""),
     [date, setDate] = useState(""),
+    [kind, setKind] = useState(""),
     [current, setCurrent] = useState<Item>(),
     [resume, setResume] = useState<Resume>(),
     [position, setPosition] = useState(0),
@@ -322,7 +328,7 @@ export default function Library() {
     visible = items.filter(
       (i) =>
         i.title.toLocaleLowerCase().includes(search.toLocaleLowerCase()) &&
-        (!date || i.serviceDate === date),
+        (!date || i.serviceDate === date) && (!kind || (i.serviceKind ?? "dawn") === kind),
     );
   const todayState = loading
     ? "확인 중"
@@ -332,7 +338,7 @@ export default function Library() {
         ? {
             ready: "준비 중",
             waiting: "준비 중",
-            empty: "방송 없음",
+            empty: "게시 전",
             failed: "수집 실패",
           }[status.state]
         : "상태 미확인";
@@ -341,12 +347,12 @@ export default function Library() {
       <header>
         <a className="brand" href="/">
           ☀ <strong>새가나안교회 만나</strong>
-          <span>새벽을 듣다</span>
+
         </a>
 
       </header>
       <main>
-        {playing && current && <DailyWord key={current.serviceDate} date={current.serviceDate} />}
+        {playing && current && sharesDailyWord(current) && <DailyWord key={current.serviceDate} date={current.serviceDate} />}
         {mock && (
           <div className="notice">
             개발용 샘플 모드 · 실제 예배가 아닌 12초 테스트 음원입니다. 날짜는
@@ -368,7 +374,7 @@ export default function Library() {
               <span className="eyebrow">TODAY’S WORSHIP</span>
               <span className="badge">{todayState}</span>
             </div>
-            <h2>오늘의 새벽예배</h2>
+            <h2>오늘의 예배</h2>
             <p>
               {new Date().toLocaleDateString("ko-KR", {
                 timeZone: "Asia/Seoul",
@@ -381,7 +387,7 @@ export default function Library() {
             {todays.length ? (
               todays.map((item) => (
                 <div key={item.id}>
-                  <button className="primary" onClick={() => choose(item)}>▶ {item.title}</button>{" "}
+                  <button className="primary" onClick={() => choose(item)}>▶ {serviceNames[item.serviceKind ?? "dawn"]} · {item.title}</button>{" "}
                   <button disabled={!!saving} onClick={() => void toggleSave(item)}>
                     {saving?.id === item.id
                       ? { preparing: "저장 준비 중…", downloading: "음원 받는 중…", writing: "기기에 저장 중…", removing: "삭제 중…" }[saving.phase]
@@ -408,9 +414,7 @@ export default function Library() {
               <p className="muted">
                 {todayState === "수집 실패"
                   ? "수집 중 문제가 발생했습니다. 다음 확인을 기다려 주세요."
-                  : todayState === "방송 없음"
-                    ? "오늘의 수집 범위에 해당하는 방송이 없습니다."
-                    : "오늘 준비된 음원이 아직 없습니다."}
+                  : "오늘 게시된 예배 음원이 아직 없습니다."}
                 <br />
                 아래 보관함에서 이전 예배를 들을 수 있습니다.
               </p>
@@ -418,7 +422,7 @@ export default function Library() {
           </div>
           <div className="collection">
             <span className="eyebrow">COLLECTION STATUS</span>
-            <h3>아침을 준비하고 있어요</h3>
+            <h3>예배 수집 현황</h3>
             <dl>
               <div>
                 <dt>마지막 수집 확인</dt>
@@ -429,7 +433,7 @@ export default function Library() {
                 <dd>{when(status?.lastPublishedAt)}</dd>
               </div>
             </dl>
-            <small>매일 06:30 확인 · 한국 시간 기준</small>
+            <small>월–금 새벽·저녁 · 주일 오전</small>
           </div>
         </section>
         {last && resume && (
@@ -451,6 +455,10 @@ export default function Library() {
               </h2>
             </div>
             <div className="filters">
+              <select aria-label="예배 종류" value={kind} onChange={e => setKind(e.target.value)}>
+                <option value="">전체 예배</option>
+                {Object.entries(serviceNames).map(([value, name]) => <option key={value} value={value}>{name}</option>)}
+              </select>
               <input
                 aria-label="제목 검색"
                 placeholder="제목으로 검색"
@@ -490,7 +498,7 @@ export default function Library() {
                   </div>
                   <div className="sermon-info">
                     <small>
-                      {item.serviceDate.replaceAll("-", ".")} · 새벽예배
+                      {item.serviceDate.replaceAll("-", ".")} · {serviceNames[item.serviceKind ?? "dawn"]}
                     </small>
                     <h3>
                       <button
@@ -583,7 +591,7 @@ export default function Library() {
             {busy
               ? "음원 준비 중…"
               : current
-                ? "지금 듣는 예배"
+                ? serviceNames[current.serviceKind ?? "dawn"]
                 : "오늘도 말씀과 함께"}
           </small>
           <strong>{current?.title || "보관함에서 예배를 선택하세요"}</strong>
