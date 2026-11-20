@@ -27,6 +27,11 @@ class SelectionTest(unittest.TestCase):
         self.assertEqual(select(data, DAY), 'selected')
     def test_secrets_never_in_errors(self):
         self.assertEqual(safe_error(RuntimeError('https://secret?token=private')), 'operation_failed')
+    def test_post_live_requires_known_duration(self):
+        data = info(status='post_live')
+        for duration in [None, False, 0, float('nan'), float('inf')]:
+            self.assertEqual(select(dict(data, duration=duration), DAY), 'waiting')
+        self.assertEqual(select(dict(data, duration=2616), DAY), 'selected')
 
 class RecoveryTest(unittest.TestCase):
     def setUp(self):
@@ -47,6 +52,16 @@ class RecoveryTest(unittest.TestCase):
         self.collector.process(info('one'))
         self.assertEqual(self.download.call_count, 2)
         self.assertEqual(len(self.store.get_json('metadata/catalog.json')['items']), 2)
+    def test_post_live_publishes_only_when_duration_matches(self):
+        self.collector.process(dict(info('complete', status='post_live'), duration=1210))
+        with self.assertRaisesRegex(ValueError, 'incomplete_audio'):
+            self.collector.process(dict(info('short', status='post_live'), duration=1400))
+        self.assertEqual(self.state.row('short')['last_error'], 'incomplete_audio')
+        self.assertEqual(self.state.row('short')['failed_stage'], 'downloading')
+        self.assertTrue(self.state.row('short')['next_retry_at'])
+        self.assertEqual([item['id'] for item in self.store.get_json('metadata/catalog.json')['items']], ['complete'])
+        self.collector.process(dict(info('short', status='post_live'), duration=1210))
+        self.assertEqual(self.state.row('short')['state'], 'published')
     def test_upload_failure_resumes_without_download(self):
         upload = self.store.upload
         self.store.upload = Mock(side_effect=RuntimeError('network'))

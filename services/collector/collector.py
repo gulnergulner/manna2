@@ -28,6 +28,20 @@ ID = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 def now():
     return datetime.now(KST).isoformat()
 
+def expected_duration(info):
+    duration = info.get('duration')
+    if isinstance(duration, (int, float)) and not isinstance(duration, bool) and 0 < duration < float('inf'):
+        return duration
+    return None
+
+def verify_duration(info, actual):
+    expected = expected_duration(info)
+    if expected is None:
+        if info.get('live_status') == 'post_live':
+            raise ValueError('incomplete_audio')
+    elif not 0 < actual < float('inf') or abs(actual - expected) > max(10, expected * .02):
+        raise ValueError('incomplete_audio')
+
 def validate_catalog(value):
     VALIDATOR.validate(value)
     ids = [i['id'] for i in value['items']]
@@ -54,9 +68,10 @@ def select(info, day, start='00:00', end='06:30'):
     hi = datetime.combine(day, time.fromisoformat(end), KST)
     if not lo <= instant < hi:
         return 'outside'
-    if info.get('live_status') != 'was_live':
-        return 'waiting'
-    return 'selected'
+    status = info.get('live_status')
+    if status == 'was_live' or (status == 'post_live' and expected_duration(info) is not None):
+        return 'selected'
+    return 'waiting'
 
 def safe_error(error):
     # Never retain raw exception bodies, CLI stderr, URL query strings, or credentials.
@@ -208,9 +223,9 @@ class Collector:
     def reuse_bot_audio(self, info, final):
         """Copy an explicitly configured bot output; validate before publication."""
         directory = os.getenv('BOT_AUDIO_DIR', '')
-        duration = info.get('duration')
+        duration = expected_duration(info)
         if (not directory or os.getenv('AUDIO_BITRATE', '192K').upper() != '192K'
-                or not isinstance(duration, (int, float)) or isinstance(duration, bool) or duration <= 0):
+                or duration is None):
             return False
         directory = Path(directory)
         if not directory.is_dir():
@@ -231,8 +246,7 @@ class Collector:
                 with candidates[0].open('rb') as source:
                     shutil.copyfileobj(source, target)
             actual, _ = self.prober(temporary)
-            if abs(actual - duration) > max(10, duration * .02):
-                return False
+            verify_duration(info, actual)
             temporary.replace(final)
             return True
         except (OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError):
@@ -245,14 +259,17 @@ class Collector:
         if self.reuse_bot_audio(info, final):
             return
         # yt-dlp chooses an audio-only track, then FFmpeg converts it. Fragment loss is fatal.
+        is_post_live = info.get('live_status') == 'post_live'
         work = self.data / 'tmp' / info['id']
+        if is_post_live:
+            work /= 'post_live'
         work.mkdir(parents=True, exist_ok=True)
-        run(['yt-dlp', '--no-playlist', '--js-runtimes', 'deno', '--abort-on-unavailable-fragments', '--retries', '3', '--fragment-retries', '3', '--socket-timeout', '30', '--retry-sleep', 'http:exp=1:20', '-f', 'bestaudio', '-x', '--audio-format', 'mp3', '--audio-quality', os.getenv('AUDIO_BITRATE', '192K'), '--no-progress', '--no-warnings', '-o', str(work / 'source.%(ext)s'), f"https://www.youtube.com/watch?v={info['id']}"])
+        # A replay still in processing may serve a different set of fragments on retry.
+        fresh_download = ['--force-overwrites'] if is_post_live else []
+        run(['yt-dlp', *fresh_download, '--no-playlist', '--js-runtimes', 'deno', '--abort-on-unavailable-fragments', '--retries', '3', '--fragment-retries', '3', '--socket-timeout', '30', '--retry-sleep', 'http:exp=1:20', '-f', 'bestaudio', '-x', '--audio-format', 'mp3', '--audio-quality', os.getenv('AUDIO_BITRATE', '192K'), '--no-progress', '--no-warnings', '-o', str(work / 'source.%(ext)s'), f"https://www.youtube.com/watch?v={info['id']}"])
         candidate = work / 'source.mp3'
         duration, _ = self.prober(candidate)
-        expected = info.get('duration')
-        if isinstance(expected, (int, float)) and expected > 0 and abs(duration - expected) > max(10, expected * .02):
-            raise ValueError('incomplete_audio')
+        verify_duration(info, duration)
         candidate.replace(final)
 
     def process(self, info):
@@ -273,12 +290,16 @@ class Collector:
                 # A crash after atomic local rename is recovered without another download.
                 if final.exists():
                     try:
-                        self.prober(final)
+                        duration, _ = self.prober(final)
+                        if info.get('live_status') == 'post_live':
+                            verify_duration(info, duration)
                     except Exception:
                         final.replace(final.with_suffix('.invalid'))
                 if not final.exists():
                     self.downloader(info, final)
                 duration, size = self.prober(final)
+                if info.get('live_status') == 'post_live':
+                    verify_duration(info, duration)
                 started = datetime.fromtimestamp(info.get('release_timestamp') or info['timestamp'], KST)
                 payload = {'item': {'id': video, 'title': info.get('title') or video, 'sourceUrl': f'https://www.youtube.com/watch?v={video}', 'broadcastStartedAt': started.isoformat(), 'serviceDate': started.date().isoformat(), 'durationSeconds': duration, 'sizeBytes': size, 'bitrateKbps': int(os.getenv('AUDIO_BITRATE', '192K').upper().removesuffix('K')), 'objectKey': f'audio/{started:%Y/%m}/{video}.mp3', 'publishedAt': now(), 'audioScope': 'full_service', 'availability': 'available'}, 'sha256': sha256(final)}
                 self.state.stage(video, 'converted', payload)
@@ -405,8 +426,19 @@ def main(argv=None):
                 for row in state.db.execute("SELECT * FROM jobs WHERE state!='published'"):
                     if row['id'] not in known and (not row['next_retry_at'] or row['next_retry_at'] <= now()):
                         info = json.loads(row['info'])
-                        if row['state'] in ['discovered', 'waiting']:
-                            fresh = json.loads(run(['yt-dlp', '--dump-single-json', '--skip-download', '--js-runtimes', 'deno', f"https://www.youtube.com/watch?v={row['id']}"], timeout=180))
+                        retry_post_live = (
+                            row['state'] == 'downloading' and info.get('live_status') == 'post_live'
+                        )
+                        if retry_post_live and select(info, args.date, start, end) == 'outside':
+                            continue
+                        if row['state'] in ['discovered', 'waiting'] or retry_post_live:
+                            try:
+                                fresh = json.loads(run(['yt-dlp', '--dump-single-json', '--skip-download', '--js-runtimes', 'deno', f"https://www.youtube.com/watch?v={row['id']}"], timeout=180))
+                            except Exception as error:
+                                entries.append({'id': row['id'], 'discovery_error': safe_error(error)})
+                                continue
+                            if retry_post_live and fresh.get('channel_id') != channel_id:
+                                raise ValueError('channel_id_changed')
                             info = {k: fresh.get(k) for k in info}
                         entries.append(info)
             def sample_download(info, final):

@@ -4,7 +4,7 @@
 
 `discovered → waiting/downloading → converted → uploaded → published` 상태를 NAS의 `state/collector.sqlite3`에 기록합니다. 실패한 작업은 성공한 마지막 단계와 `failed_stage`, 정제된 `last_error`, `attempts`, `next_retry_at`을 유지합니다. 재시도 간격은 10분부터 늘어나 최대 120분입니다. 단일 실행당 유튜브·R2 네트워크 재시도도 유한합니다. 토큰과 원본 오류 본문은 기록하지 않습니다.
 
-`--date YYYY-MM-DD`로 과거 날짜를 지정합니다. `--retry-pending`은 최근 목록 밖의 미완료 작업도 다시 확인하되 지정 날짜의 선택 범위를 유지합니다. 다른 날짜의 실패는 해당 날짜로 실행해야 합니다. `was_live`만 수집하며 release_timestamp를 우선하고 없으면 timestamp를 사용합니다. 두 시각의 실제 의미는 최초 dry-run에서 해당 채널 방송과 대조해야 합니다. 시각이 없는 항목은 waiting/review 상태로 남고 제목 날짜나 upload_date로 추측하지 않습니다.
+`--date YYYY-MM-DD`로 과거 날짜를 지정합니다. `--retry-pending`은 최근 목록 밖의 미완료 작업도 다시 확인하되 지정 날짜의 선택 범위를 유지합니다. 다른 날짜의 실패는 해당 날짜로 실행해야 합니다. `was_live`와 유튜브가 재생 길이를 제공하는 `post_live` 방송을 수집합니다. `post_live`는 MP3 길이 차이가 10초와 원본 길이의 2% 중 큰 값 이내일 때 게시합니다. 다운로드나 길이 검증에 실패하면 재시도 간격을 적용합니다. 방송 시각은 release_timestamp를 우선하고 없으면 timestamp를 사용합니다. 두 시각의 실제 의미는 최초 dry-run에서 해당 채널 방송과 대조해야 합니다. 시각이 없는 항목은 waiting/review 상태로 남고 제목 날짜나 upload_date로 추측하지 않습니다.
 
 데이터 복구 순서:
 
