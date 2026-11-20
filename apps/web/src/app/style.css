@@ -171,6 +171,19 @@ p {
 .today p {
   font-size: 13px;
 }
+.device-save-progress {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  max-width: 24rem;
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+}
+.device-save-progress progress {
+  width: 100%;
+  height: 12px;
+  accent-color: var(--green);
+}
 .muted {
   color: var(--muted);
   font-size: 12px;

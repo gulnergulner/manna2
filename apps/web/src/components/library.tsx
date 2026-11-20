@@ -18,10 +18,46 @@ type Status = {
 };
 type SaveOperation = {
   id: string;
-  phase: "preparing" | "downloading" | "removing";
-};
+} & (
+  | { phase: "preparing" | "removing" | "writing" }
+  | { phase: "downloading"; received: number }
+);
 const cacheName = "manna-audio-v1";
 const cacheKey = (id: string) => "/saved-audio/" + encodeURIComponent(id);
+const downloadIdleMs = 30_000;
+const megabytes = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 });
+
+function downloadAudio(url: string, onProgress: (received: number) => void) {
+  return new Promise<Blob>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("GET", url);
+    request.responseType = "blob";
+
+    const connectionError = () => reject(new Error("음원을 끝까지 받지 못했습니다. 연결을 확인한 후 다시 시도해 주세요."));
+    let timer: ReturnType<typeof setTimeout>;
+    function watchForStall() {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        reject(new Error("30초 동안 음원 데이터가 도착하지 않았습니다. 연결을 확인한 후 다시 시도해 주세요."));
+        request.abort();
+      }, downloadIdleMs);
+    }
+    request.onprogress = (event) => {
+      watchForStall();
+      onProgress(event.loaded);
+    };
+    request.onload = () => {
+      const contentType = request.getResponseHeader("Content-Type");
+      if (request.status === 200 && contentType?.startsWith("audio/")) resolve(request.response);
+      else connectionError();
+    };
+    request.onerror = connectionError;
+    request.onabort = connectionError;
+    request.onloadend = () => clearTimeout(timer);
+    request.send();
+    watchForStall();
+  });
+}
 
 async function prepareOfflinePlayer() {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -96,8 +132,7 @@ export default function Library() {
     setSaveError("");
     setSaving({ id: item.id, phase: removing ? "removing" : "preparing" });
     let message = "기기 저장을 변경하지 못했습니다. 연결과 저장 공간을 확인해 주세요.";
-    const download = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let linkTimer: ReturnType<typeof setTimeout> | undefined;
     try {
       if (!window.caches || (!removing && !navigator.serviceWorker)) {
         message = "이 브라우저에서는 기기 저장을 사용할 수 없습니다.";
@@ -110,18 +145,20 @@ export default function Library() {
       } else {
         message = "오프라인 재생을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.";
         await prepareOfflinePlayer();
-        setSaving({ id: item.id, phase: "downloading" });
-        timer = setTimeout(() => download.abort(), 180000);
-        message = "음원을 끝까지 받지 못했습니다. 연결을 확인한 후 다시 시도해 주세요.";
-        const link = await fetch(`/api/sermons/${encodeURIComponent(item.id)}/play-url`, { signal: download.signal });
+        message = "음원 주소를 가져오지 못했습니다. 연결을 확인한 후 다시 시도해 주세요.";
+        const linkRequest = new AbortController();
+        linkTimer = setTimeout(() => linkRequest.abort(), downloadIdleMs);
+        const link = await fetch(`/api/sermons/${encodeURIComponent(item.id)}/play-url`, { signal: linkRequest.signal });
         if (!link.ok) throw new Error();
         const { url } = await link.json();
-        const response = await fetch(url, { signal: download.signal });
-        if (response.status !== 200 || !response.headers.get("Content-Type")?.startsWith("audio/")) throw new Error();
-        const blob = await response.blob();
-        clearTimeout(timer);
+        clearTimeout(linkTimer);
+        setSaving({ id: item.id, phase: "downloading", received: 0 });
+        message = "";
+        const blob = await downloadAudio(url, (received) => setSaving({ id: item.id, phase: "downloading", received }));
+        message = "받은 음원 크기가 원본과 다릅니다. 다시 시도해 주세요.";
         if (blob.size === 0 || blob.size !== item.sizeBytes) throw new Error();
 
+        setSaving({ id: item.id, phase: "writing" });
         message = "기기 저장을 완료하지 못했습니다. 브라우저 저장 공간을 확인해 주세요.";
         await cache.put(cacheKey(item.id), new Response(blob, {
           headers: {
@@ -131,10 +168,10 @@ export default function Library() {
         }));
         setStored(ids => ids.includes(item.id) ? ids : [...ids, item.id]);
       }
-    } catch {
-      setSaveError(download.signal.aborted ? "음원을 받는 시간이 초과됐습니다. 연결을 확인한 후 다시 시도해 주세요." : message);
+    } catch (error) {
+      setSaveError(message || (error instanceof Error ? error.message : "음원 저장에 실패했습니다."));
     } finally {
-      clearTimeout(timer);
+      clearTimeout(linkTimer);
       setSaving(undefined);
     }
   }
@@ -347,9 +384,24 @@ export default function Library() {
                   <button className="primary" onClick={() => choose(item)}>▶ {item.title}</button>{" "}
                   <button disabled={!!saving} onClick={() => void toggleSave(item)}>
                     {saving?.id === item.id
-                      ? { preparing: "저장 준비 중…", downloading: "음원 저장 중…", removing: "삭제 중…" }[saving.phase]
+                      ? { preparing: "저장 준비 중…", downloading: "음원 받는 중…", writing: "기기에 저장 중…", removing: "삭제 중…" }[saving.phase]
                       : stored.includes(item.id) ? "기기 저장 삭제" : "오늘 말씀 기기에 저장"}
                   </button>
+                  {saving?.id === item.id && saving.phase !== "removing" && (
+                    <div className="device-save-progress">
+                      <progress
+                        aria-label="말씀 기기 저장 진행률"
+                        max={item.sizeBytes}
+                        value={saving.phase === "downloading" ? Math.min(saving.received, item.sizeBytes) : saving.phase === "writing" ? item.sizeBytes : undefined}
+                      />
+                      {saving.phase === "downloading" && (
+                        <small>
+                          {Math.min(100, Math.floor(saving.received / item.sizeBytes * 100))}% ·{" "}
+                          {megabytes.format(saving.received / 1e6)} / {megabytes.format(item.sizeBytes / 1e6)} MB
+                        </small>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))
             ) : (
