@@ -25,7 +25,7 @@ docker compose -f services/collector/compose.yaml run --rm collector --date 2026
 docker compose -f services/collector/compose.yaml run --rm collector --date 2026-10-27 --retry-pending
 ```
 
-DSM 작업 스케줄러 → 예약된 작업 → 사용자 정의 스크립트에서 Docker 실행 권한을 가진 계정을 선택하고 매일 **06:30**에 실행합니다. 예약 시간대는 NAS 설정을 따릅니다. 추가로 07:00, 07:30, 08:00, 08:30 같은 스크립트를 실행하는 재시도 작업을 만듭니다.
+DSM 예약 요일과 두 번의 실행 시각은 [NAS 예배 수집 일정](nas-service.md)을 따릅니다. NAS 시간대는 한국 시간으로 설정합니다.
 
 ```sh
 cd /volume1/docker/church-audio || exit 1

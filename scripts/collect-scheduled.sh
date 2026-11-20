@@ -3,10 +3,10 @@ set -eu
 cd "$(dirname "$0")/.."
 export TZ=Asia/Seoul
 case "$(date +%u-%H)" in
-  [1-5]-0[6-9]|[1-5]-10|[1-5]-2[0-3]|7-1[2-6])
+  [1-5]-0[67]|[1-4]-2[23]|7-1[34])
     service_date=$(date +%F) ;;
-  [2-6]-00)
-    # At midnight in Seoul the UTC calendar date is still yesterday.
+  6-0[01])
+    # At both Saturday checks (00:30 and 01:30 KST), UTC is still Friday.
     service_date=$(date -u +%F) ;;
   *) exit 0 ;;
 esac
